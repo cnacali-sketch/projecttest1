@@ -8,8 +8,9 @@ on:
   workflow_dispatch:
 
 env:
+  # Keep only this one.
+  # Do NOT set FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 at the same time.
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
   ANDROID_HOME: /usr/local/lib/android/sdk
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -36,7 +37,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Setup Java
+      - name: Setup Java 17 for Android SDK tools
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
@@ -66,12 +67,24 @@ jobs:
 
           sudo ln -sf "$ANDROID_HOME/build-tools/33.0.2/aidl" /usr/local/bin/aidl
 
-          echo "Checking tools..."
+          echo "Checking Android tools..."
           java -version
           which java
           which sdkmanager
           which aidl
           aidl --version || true
+
+      - name: Setup Java 8 for Buildozer Gradle build
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "8"
+
+      - name: Install Gradle 7.6.4
+        run: |
+          cd /tmp
+          curl -fsSL -o gradle-7.6.4-bin.zip https://services.gradle.org/distributions/gradle-7.6.4-bin.zip
+          unzip -q gradle-7.6.4-bin.zip
 
       - name: Install system dependencies
         run: |
@@ -105,8 +118,18 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install "buildozer==1.5.0" "Cython==0.29.37" "setuptools<70"
 
-      - name: Show Buildozer version
+      - name: Show versions
         run: |
+          echo "Python:"
+          python --version
+
+          echo "Java for Buildozer:"
+          java -version
+
+          echo "Gradle:"
+          /tmp/gradle-7.6.4/bin/gradle -v | head -20
+
+          echo "Buildozer:"
           buildozer --version
 
       - name: Check required project files
@@ -120,6 +143,9 @@ jobs:
           echo "Checking buildozer.spec..."
           test -f buildozer.spec
 
+          echo "Checking invoice_templates.py..."
+          test -f invoice_templates.py
+
           echo "Checking workflow files..."
           find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) -print
 
@@ -127,6 +153,16 @@ jobs:
         id: build
         continue-on-error: true
         run: |
+          echo "Using Java for Buildozer:"
+          java -version
+
+          echo "Using Gradle:"
+          which gradle
+          /tmp/gradle-7.6.4/bin/gradle -v | head -20
+
+          export JAVA_HOME="$JAVA_HOME"
+          export PATH="$JAVA_HOME/bin:/tmp/gradle-7.6.4/bin:$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH"
+
           export ANDROID_HOME="$ANDROID_HOME"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROIDSDK="$ANDROID_HOME"
@@ -137,9 +173,6 @@ jobs:
 
           export ANDROIDAPI="33"
           export ANDROIDMINAPI="21"
-
-          export JAVA_HOME="/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64"
-          export PATH="$JAVA_HOME/bin:$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH"
 
           buildozer -v android debug 2>&1 | tee buildozer-build.log
 
