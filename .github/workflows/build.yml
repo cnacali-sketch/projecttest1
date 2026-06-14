@@ -8,27 +8,60 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+
+  ANDROID_HOME: ${{ runner.tool_cache }}/android-sdk
+  ANDROID_SDK_ROOT: ${{ runner.tool_cache }}/android-sdk
+  ANDROIDSDK: ${{ runner.tool_cache }}/android-sdk
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROIDSDK=$ANDROIDSDK"
+
+          yes | sdkmanager --licenses
+
+          sdkmanager "platform-tools" \
+                     "platforms;android-33" \
+                     "build-tools;33.0.2"
+
+          echo "$ANDROID_HOME/build-tools/33.0.2" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+
+          sudo ln -sf "$ANDROID_HOME/build-tools/33.0.2/aidl" /usr/local/bin/aidl
+
+          echo "Checking Java:"
+          java -version
+
+          echo "Checking Android tools:"
+          which java
+          which sdkmanager
+          which aidl
+          aidl --version || true
 
       - name: Install system dependencies
         run: |
@@ -55,11 +88,24 @@ jobs:
 
       - name: Install Buildozer and Cython
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           pip install buildozer cython
 
+      - name: Show Buildozer version
+        run: |
+          buildozer --version
+
       - name: Build APK with Buildozer
-        run: buildozer -v android debug
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROIDSDK: ${{ env.ANDROIDSDK }}
+        run: |
+          export ANDROID_HOME="$ANDROID_HOME"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export ANDROIDSDK="$ANDROID_HOME"
+
+          buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
