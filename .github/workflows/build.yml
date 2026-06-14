@@ -9,14 +9,22 @@ on:
 
 env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
-  ANDROID_HOME: ${{ runner.tool_cache }}/android-sdk
-  ANDROID_SDK_ROOT: ${{ runner.tool_cache }}/android-sdk
-  ANDROIDSDK: ${{ runner.tool_cache }}/android-sdk
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ANDROIDSDK: /usr/local/lib/android/sdk
+
+  ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.3.13750724
+  ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.3.13750724
+  ANDROIDNDK: /usr/local/lib/android/sdk/ndk/27.3.13750724
+
+  ANDROIDAPI: "33"
+  ANDROIDMINAPI: "21"
 
 jobs:
   build-apk:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
 
     steps:
@@ -42,6 +50,9 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           echo "ANDROIDSDK=$ANDROIDSDK"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_ROOT"
+          echo "ANDROIDNDK=$ANDROIDNDK"
 
           yes | sdkmanager --licenses
 
@@ -49,18 +60,17 @@ jobs:
                      "platforms;android-33" \
                      "build-tools;33.0.2"
 
-          echo "$ANDROID_HOME/build-tools/33.0.2" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/build-tools/33.0.2" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
           sudo ln -sf "$ANDROID_HOME/build-tools/33.0.2/aidl" /usr/local/bin/aidl
 
-          echo "Checking Java:"
-          java -version
-
-          echo "Checking Android tools:"
+          echo "Checking tools..."
           which java
           which sdkmanager
           which aidl
+
+          java -version
           aidl --version || true
 
       - name: Install system dependencies
@@ -86,28 +96,56 @@ jobs:
             libssl-dev \
             libffi-dev
 
-      - name: Install Buildozer and Cython
+      - name: Install Buildozer and pinned Cython
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install buildozer cython
+          pip install "buildozer==1.5.0" "Cython==0.29.37" "setuptools<70"
 
       - name: Show Buildozer version
         run: |
           buildozer --version
 
+      - name: Check required files
+        run: |
+          pwd
+          ls -la
+          test -f main.py
+          test -f buildozer.spec
+          test -f .github/workflows/build-apk.yml
+
       - name: Build APK with Buildozer
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROIDSDK: ${{ env.ANDROIDSDK }}
+        id: build
+        continue-on-error: true
         run: |
           export ANDROID_HOME="$ANDROID_HOME"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROIDSDK="$ANDROID_HOME"
 
-          buildozer -v android debug
+          export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
+          export ANDROIDNDK="$ANDROID_NDK_HOME"
+
+          export ANDROIDAPI="33"
+          export ANDROIDMINAPI="21"
+
+          export JAVA_HOME="/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.19-10/x64"
+          export PATH="$JAVA_HOME/bin:$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH"
+
+          buildozer -v android debug 2>&1 | tee buildozer-build.log
+
+      - name: Upload Buildozer log if failed
+        if: steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-error-log
+          path: buildozer-build.log
+
+      - name: Fail job if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       - name: Upload APK
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: sc-solutions-apk
