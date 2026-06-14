@@ -1,0 +1,373 @@
+GitHub **does not automatically make an APK** just because files are uploaded. GitHub only stores code unless you add a build system like **GitHub Actions + Buildozer**.
+
+Also important:
+
+> If you uploaded the **Streamlit browser files** like `app.py`, `requirements.txt`, `.replit`, GitHub will not make an APK from those.  
+> Those files are for browser testing only.
+
+For APK, your GitHub repo must contain the **Kivy Android project**, mainly:
+
+```text
+main.py
+buildozer.spec
+.github/workflows/build-apk.yml
+```
+
+---
+
+# Correct GitHub Repo Structure for APK
+
+Your repo should look like this:
+
+```text
+sc-solutions-apk/
+│
+├── main.py
+├── buildozer.spec
+│
+└── .github/
+    └── workflows/
+        └── build-apk.yml
+```
+
+Do **not** rely on:
+
+```text
+app.py
+.replit
+requirements.txt
+```
+
+Those are for Replit/Streamlit browser testing.
+
+---
+
+# 1. Make sure `main.py` is Kivy code
+
+For APK build, `main.py` should be the Kivy app code, not the Streamlit browser code.
+
+At the bottom of the Kivy `main.py`, it should have something like:
+
+```python
+if __name__ == "__main__":
+    SCSolutionsApp().run()
+```
+
+---
+
+# 2. Create `buildozer.spec`
+
+Create this file in the root folder of your GitHub repo:
+
+```text
+buildozer.spec
+```
+
+Paste this:
+
+```ini
+[app]
+
+title = SC Solutions
+package.name = scsolutionsinvoice
+package.domain = com.scsolutions
+
+source.dir = .
+source.include_exts = py,pdf,png,jpg,jpeg,ttf,otf,kv
+
+orientation = portrait
+fullscreen = 0
+
+log_level = 2
+warn_on_root = 1
+
+requirements = python3,kivy,reportlab,num2words,pillow
+
+osx.python_version = 3
+osx.kivy_version = 2.3.0
+
+android.api = 33
+android.minapi = 21
+android.ndk = 25b
+android.accept_sdk_license = True
+
+android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,INTERNET
+android.archs = arm64-v8a
+
+android.entrypoint = sdl2
+
+[buildozer]
+
+profile = default
+log_level = 2
+```
+
+---
+
+# 3. Create GitHub Actions APK builder
+
+Create this file:
+
+```text
+.github/workflows/build-apk.yml
+```
+
+Paste this:
+
+```yaml
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libgstreamer1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            libgtk-3-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            autoconf \
+            automake \
+            cmake \
+            libssl-dev \
+            libffi-dev
+
+      - name: Install Buildozer and Cython
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer cython
+
+      - name: Build APK with Buildozer
+        run: buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc-solutions-apk
+          path: bin/*-debug.apk
+```
+
+---
+
+# 4. Commit and push to GitHub
+
+Run:
+
+```bash
+git add .
+git commit -m "Add APK build workflow"
+git push
+```
+
+---
+
+# 5. Check GitHub Actions
+
+Go to your GitHub repo:
+
+```text
+Actions
+```
+
+You should see:
+
+```text
+Build Android APK
+```
+
+Click it.
+
+Then click the running job.
+
+Wait for the build to finish.
+
+First build may take:
+
+```text
+45 minutes to 2 hours
+```
+
+because GitHub must download Android SDK, NDK, Python dependencies, Kivy, etc.
+
+---
+
+# 6. Download APK
+
+After the workflow finishes successfully:
+
+```text
+Actions > Build Android APK > latest run > Artifacts
+```
+
+Download:
+
+```text
+sc-solutions-apk.zip
+```
+
+Inside it, you should get:
+
+```text
+scsolutionsinvoice-0.1-debug.apk
+```
+
+Install that APK on Android.
+
+---
+
+# Common reasons it is not making APK
+
+## Reason 1: You uploaded Streamlit files only
+
+If your repo only has:
+
+```text
+app.py
+requirements.txt
+.replit
+```
+
+Then GitHub cannot make APK.
+
+You need:
+
+```text
+main.py
+buildozer.spec
+.github/workflows/build-apk.yml
+```
+
+---
+
+## Reason 2: `buildozer.spec` is not in the root folder
+
+It must be here:
+
+```text
+repo/buildozer.spec
+```
+
+Not inside another folder.
+
+---
+
+## Reason 3: `main.py` is not Kivy code
+
+For APK, `main.py` must be Kivy Android app code.
+
+The Streamlit `app.py` browser code will not become APK.
+
+---
+
+## Reason 4: GitHub Actions is disabled
+
+Go to:
+
+```text
+Settings > Actions > General
+```
+
+Enable:
+
+```text
+Allow all actions and reusable workflows
+```
+
+---
+
+## Reason 5: Workflow file is in wrong place
+
+It must be exactly:
+
+```text
+.github/workflows/build-apk.yml
+```
+
+Not:
+
+```text
+workflows/build-apk.yml
+```
+
+Not:
+
+```text
+.github/build-apk.yml
+```
+
+---
+
+## Reason 6: First build timed out
+
+Buildozer first build can be long.
+
+If it times out, use:
+
+```yaml
+timeout-minutes: 360
+```
+
+as shown above.
+
+If it still fails, build locally using WSL/Linux.
+
+---
+
+# Best next step
+
+Check your GitHub repo files.
+
+If you have only this:
+
+```text
+app.py
+requirements.txt
+.replit
+```
+
+Then you are testing the **browser version**, not APK.
+
+For APK, upload the Kivy files:
+
+```text
+main.py
+buildozer.spec
+.github/workflows/build-apk.yml
+```
+
+If you want, send me your GitHub repo file list or the GitHub Actions error, and I can tell you exactly which file is missing or which line is failing.
