@@ -46,7 +46,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK components using Java 17
+      - name: Install Android SDK components and wrap legacy tools for Buildozer
         run: |
           set -e
 
@@ -54,41 +54,51 @@ jobs:
           export PATH="$JAVA_HOME/bin:$PATH"
 
           if [ -d "$ANDROID_HOME/cmdline-tools/16.0/bin" ]; then
-            CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/16.0/bin"
+            CMDLINE_BIN="$ANDROID_HOME/cmdline-tools/16.0/bin"
           elif [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
+            CMDLINE_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
           else
             echo "ERROR: Android cmdline-tools not found"
             exit 1
           fi
 
-          export PATH="$CMDLINE_TOOLS_BIN:$PATH"
-          echo "CMDLINE_TOOLS_BIN=$CMDLINE_TOOLS_BIN" >> "$GITHUB_ENV"
+          echo "Using cmdline-tools:"
+          echo "$CMDLINE_BIN"
 
-          echo "Using Java for Android SDK tools:"
-          java -version
+          echo "Accepting Android SDK licenses:"
+          yes | "$CMDLINE_BIN/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
 
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
-
-          sdkmanager --sdk_root="$ANDROID_HOME" \
+          echo "Installing Android SDK packages:"
+          "$CMDLINE_BIN/sdkmanager" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
 
-          echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
+          echo "$CMDLINE_BIN" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/33.0.2" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "CMDLINE_TOOLS_BIN=$CMDLINE_BIN" >> "$GITHUB_ENV"
 
           sudo ln -sf "$ANDROID_HOME/build-tools/33.0.2/aidl" /usr/local/bin/aidl
 
-          echo "Checking tools:"
-          command -v java
-          command -v sdkmanager
-          command -v avdmanager
-          command -v aidl
+          echo "Creating Buildozer-compatible wrappers for legacy tools/bin:"
+          sudo mkdir -p "$ANDROID_HOME/tools/bin"
 
+          sudo rm -f "$ANDROID_HOME/tools/bin/sdkmanager"
+          sudo rm -f "$ANDROID_HOME/tools/bin/avdmanager"
+
+          printf '#!/usr/bin/env bash\nexec "%s/sdkmanager" "$@"\n' "$CMDLINE_BIN" | sudo tee "$ANDROID_HOME/tools/bin/sdkmanager" >/dev/null
+          printf '#!/usr/bin/env bash\nexec "%s/avdmanager" "$@"\n' "$CMDLINE_BIN" | sudo tee "$ANDROID_HOME/tools/bin/avdmanager" >/dev/null
+
+          sudo chmod +x "$ANDROID_HOME/tools/bin/sdkmanager"
+          sudo chmod +x "$ANDROID_HOME/tools/bin/avdmanager"
+
+          echo "Testing legacy sdkmanager path used by Buildozer:"
           java -version
-          aidl --version || true
+          "$ANDROID_HOME/tools/bin/sdkmanager" --list | head -20
+
+          echo "Testing legacy avdmanager path used by Buildozer:"
+          "$ANDROID_HOME/tools/bin/avdmanager" list target | head -20 || true
 
       - name: Setup Java 8 for Gradle daemon only
         uses: actions/setup-java@v4
@@ -212,6 +222,7 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_NDK_HOME"
           export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
           export ANDROIDNDK="$ANDROID_NDK_HOME"
+          export ANDROID_NDK="$ANDROID_NDK_HOME"
 
           export ANDROIDAPI="33"
           export ANDROIDMINAPI="21"
