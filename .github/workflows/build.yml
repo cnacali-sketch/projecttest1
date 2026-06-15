@@ -37,17 +37,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Setup Java 17
+      - name: Setup Java 17 for Android SDK tools
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
-
-      - name: Setup Java 8 for Gradle daemon only
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "8"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -57,14 +51,18 @@ jobs:
           set -e
 
           export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
 
           if [ -d "$ANDROID_HOME/cmdline-tools/16.0/bin" ]; then
             CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/16.0/bin"
-          else
+          elif [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
             CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
+          else
+            echo "ERROR: Android cmdline-tools not found"
+            exit 1
           fi
 
-          export PATH="$JAVA_HOME/bin:$CMDLINE_TOOLS_BIN:$PATH"
+          export PATH="$CMDLINE_TOOLS_BIN:$PATH"
           echo "CMDLINE_TOOLS_BIN=$CMDLINE_TOOLS_BIN" >> "$GITHUB_ENV"
 
           echo "Using Java for Android SDK tools:"
@@ -86,14 +84,22 @@ jobs:
           echo "Checking tools:"
           command -v java
           command -v sdkmanager
-          command -v avdmanager || true
-          command -v aidl || true
+          command -v avdmanager
+          command -v aidl
 
           java -version
           aidl --version || true
 
+      - name: Setup Java 8 for Gradle daemon only
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "8"
+
       - name: Install Gradle 7.6.4
         run: |
+          set -e
+
           cd /tmp
 
           if [ ! -d /tmp/gradle-7.6.4 ]; then
@@ -108,14 +114,16 @@ jobs:
 
       - name: Configure Gradle to use Java 8 daemon
         run: |
+          set -e
+
           mkdir -p "$HOME/.gradle"
 
-          cat > "$HOME/.gradle/gradle.properties" <<EOF
-org.gradle.java.home=$JAVA_HOME_8_X64
-org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
-EOF
+          printf '%s\n' \
+            "org.gradle.java.home=$JAVA_HOME_8_X64" \
+            "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8" \
+            > "$HOME/.gradle/gradle.properties"
 
-          echo "Gradle daemon Java:"
+          echo "Gradle properties:"
           cat "$HOME/.gradle/gradle.properties"
 
       - name: Install system dependencies
