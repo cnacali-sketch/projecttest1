@@ -57,10 +57,15 @@ jobs:
           set -e
 
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 
-          sudo mkdir -p "$ANDROID_HOME/cmdline-tools"
-          sudo ln -sfn "$ANDROID_HOME/cmdline-tools/16.0" "$ANDROID_HOME/cmdline-tools/latest"
+          if [ -d "$ANDROID_HOME/cmdline-tools/16.0/bin" ]; then
+            CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/16.0/bin"
+          else
+            CMDLINE_TOOLS_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
+          fi
+
+          export PATH="$JAVA_HOME/bin:$CMDLINE_TOOLS_BIN:$PATH"
+          echo "CMDLINE_TOOLS_BIN=$CMDLINE_TOOLS_BIN" >> "$GITHUB_ENV"
 
           echo "Using Java for Android SDK tools:"
           java -version
@@ -72,17 +77,17 @@ jobs:
             "platforms;android-33" \
             "build-tools;33.0.2"
 
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/build-tools/33.0.2" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
 
           sudo ln -sf "$ANDROID_HOME/build-tools/33.0.2/aidl" /usr/local/bin/aidl
 
           echo "Checking tools:"
-          which java
-          which sdkmanager
-          which avdmanager
-          which aidl
+          command -v java
+          command -v sdkmanager
+          command -v avdmanager || true
+          command -v aidl || true
 
           java -version
           aidl --version || true
@@ -97,6 +102,7 @@ jobs:
           fi
 
           echo "/tmp/gradle-7.6.4/bin" >> "$GITHUB_PATH"
+          echo "GRADLE_HOME=/tmp/gradle-7.6.4" >> "$GITHUB_ENV"
 
           /tmp/gradle-7.6.4/bin/gradle -v | head -20
 
@@ -189,7 +195,7 @@ EOF
           set -o pipefail
 
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          export PATH="$JAVA_HOME/bin:/tmp/gradle-7.6.4/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH"
+          export PATH="$JAVA_HOME/bin:/tmp/gradle-7.6.4/bin:$CMDLINE_TOOLS_BIN:$ANDROID_HOME/build-tools/33.0.2:$ANDROID_HOME/platform-tools:$PATH"
 
           export ANDROID_HOME="$ANDROID_HOME"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
@@ -202,6 +208,7 @@ EOF
           export ANDROIDAPI="33"
           export ANDROIDMINAPI="21"
 
+          export GRADLE_HOME="/tmp/gradle-7.6.4"
           export GRADLE_USER_HOME="$HOME/.gradle"
           export GRADLE_OPTS="-Dorg.gradle.java.home=$JAVA_HOME_8_X64 -Xmx4096m -Dfile.encoding=UTF-8"
 
@@ -210,7 +217,7 @@ EOF
 
           echo "Gradle version:"
           which gradle
-          gradle -v | head -20
+          gradle -v || true
 
           echo "Gradle daemon property:"
           cat "$HOME/.gradle/gradle.properties"
